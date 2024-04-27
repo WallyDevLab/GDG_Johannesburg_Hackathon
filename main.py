@@ -1,77 +1,144 @@
-import pandas as pd
-from sklearn.neighbors import NearestNeighbors
+from pyzbar.pyzbar import decode
+from PIL import Image
+import json
+from datetime import datetime, timedelta
+import smtplib
+from email.message import EmailMessage
 
-# Load product and user interaction data
-products = pd.read_csv("products.csv")
-interactions = pd.read_csv("user_interactions.csv")
+# def scan_barcode(image_path=None):
+#     """
+#     Scans a barcode from an image or user input.
 
-# Build a nearest neighbors model based on product features
-model = NearestNeighbors(n_neighbors=5, algorithm="ball_tree")
-model.fit(products[["feature1", "feature2", ...]])
+#     Args:
+#         image_path (str, optional): Path to the image containing the barcode. Defaults to None.
 
-def recommend_products(user_id):
-    user_interactions = interactions[interactions["user_id"] == user_id]
-    user_products = products[products["product_id"].isin(user_interactions["product_id"])]
+#     Returns:
+#         str: Decoded barcode data or None if no barcode is found.
+#     """
+#     if image_path:
+#         img = Image.open(image_path)
+#         decoded_data = decode(img)
+#     else:
+#         barcode_input = input("Enter the barcode number: ")
+#         decoded_data = [{"data": barcode_input.encode()}]
+
+#     if decoded_data:
+#         barcode_data = decoded_data[0].data.decode("utf-8")
+#         return barcode_data
+#     else:
+#         print("No barcode detected.")
+#         return None
     
-    # Find similar products to user's past interactions
-    distances, indices = model.kneighbors(user_products[["feature1", "feature2", ...]])
-    
-    # Recommend products with closest features
-    recommendations = products.iloc[indices[0]]
-    return recommendations
+def input_barcode_number():
 
-import pandas as pd
-from fbprophet import Prophet
+    barcode_input = input("Enter the barcode number: ")
+    decoded_data = [{"data": barcode_input.encode()}]
 
-# Load historical sales data
-sales_data = pd.read_csv("sales_history.csv")
-
-# Create a Prophet model for each product
-models = {}
-for product_id in sales_data["product_id"].unique():
-    product_data = sales_data[sales_data["product_id"] == product_id]
-    model = Prophet()
-    model.fit(product_data)
-    models[product_id] = model
-
-def predict_inventory(product_id, future_days):
-    forecast = models[product_id].make_future_dataframe(periods=future_days)
-    forecast = models[product_id].predict(forecast)
-    return forecast[["ds", "yhat"]] # ds = date, yhat = predicted sales
+    if decoded_data:
+        barcode_data = decoded_data[0]["data"].decode("utf-8")
+        return barcode_data
+    else:
+        print("No barcode detected.")
+        return None
 
 
-# Example using a hypothetical shipping API
-def get_shipping_options(origin, destination, weight):
-    # Call shipping API with order details
-    response = shipping_api.get_rates(origin, destination, weight)
-    return response.json()["options"]
+    pass
 
-def choose_optimal_shipping(options):
-    # Implement logic to choose based on cost, speed, etc.
-    # ...
-    return best_option
+def load_inventory():
+    """Loads inventory from a JSON file or creates an empty one if it doesn't exist."""
+    try:
+        with open("inventory.json", "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
-# # Example using Stripe API
-# import stripe
+def save_inventory(inventory):
+    """Saves the inventory to a JSON file."""
+    with open("inventory.json", "w") as f:
+        json.dump(inventory, f, indent=2)
 
-# def process_payment(amount, token):
-#     charge = stripe.Charge.create(
-#         amount=amount,
-#         currency="usd",
-#         source=token,
-#         description="Ecommerce purchase",
-#     )
-    # return charge.status
+def add_product(inventory):
+    """Adds a new product with expiry date to the inventory."""
+    barcode_data = input_barcode_number()
+    if barcode_data:
+        product_name = input("Enter product name: ")
+        while True:
+            expiry_date_str = input("Enter expiry date (YYYY-MM-DD): ")
+            try:
+                expiry_date = datetime.strptime(expiry_date_str, "%Y-%m-%d").date()
+                break
+            except ValueError:
+                print("Invalid date format. Please use YYYY-MM-DD.")
+        inventory[barcode_data] = {"name": product_name, "expiry_date": expiry_date_str}
+        print("Product added!")
 
-# Assuming you have store data (latitude/longitude)
-stores = pd.read_csv("stores.csv")
+def remove_product(inventory):
+    """Removes a product from the inventory."""
+    barcode_data = input_barcode_number()
+    if barcode_data in inventory:
+        del inventory[barcode_data]
+        print("Product removed!")
+    else:
+        print("Product not found in inventory.")
 
-def find_nearby_stores(user_latitude, user_longitude, radius=5):
-    # Calculate distance between user and each store
-    stores["distance"] = stores.apply(
-        lambda row: distance(user_latitude, user_longitude, row["latitude"], row["longitude"]), axis=1
-    )
-    # Filter stores within radius
-    nearby_stores = stores[stores["distance"] <= radius]
-    return nearby_stores
+def view_inventory(inventory):
+    """Displays the current inventory."""
+    if inventory:
+        print("Inventory:")
+        for barcode, product in inventory.items():
+            print(f"  {barcode}: {product['name']}")
+    else:
+        print("Inventory is empty.")
 
+# def check_expiry_and_send_alerts(inventory):
+#     """Checks for expiring products and sends email alerts."""
+#     today = datetime.now().date()
+#     alert_threshold = timedelta(days=5)
+#     sender_email = "your_email@example.com"
+#     sender_password = "your_password"
+#     receiver_email = "recipient@example.com"
+
+#     for barcode, product in inventory.items():
+#         expiry_date = datetime.strptime(product["expiry_date"], "%Y-%m-%d").date()
+#         days_left = expiry_date - today
+#         if 0 < days_left <= alert_threshold:
+#             subject = f"Product Expiring Soon: {product['name']}"
+#             body = f"The product with barcode {barcode} and name '{product['name']}' is expiring on {expiry_date}. Please take necessary action."
+#             message = EmailMessage()
+#             message["From"] = sender_email
+#             message["To"] = receiver_email
+#             message["Subject"] = subject
+#             message.set_content(body)
+
+#             with smtplib.SMTP_SSL("your_email_server", 465) as server:
+#                 server.login(sender_email, sender_password)
+#                 server.send_message(message)
+#             print(f"Email alert sent for product: {product['name']}")
+
+def main():
+    inventory = load_inventory()
+
+    while True:
+        print("\nMenu:")
+        print("1. Scan and Add Product")
+        print("2. Remove Product")
+        print("3. View Inventory")
+        print("4. Exit")
+
+        choice = input("Enter your choice: ")
+
+        if choice == "1":
+            add_product(inventory)
+            # check_expiry_and_send_alerts(inventory)
+        elif choice == "2":
+            remove_product(inventory)
+        elif choice == "3":
+            view_inventory(inventory)
+        elif choice == "4":
+            save_inventory(inventory)
+            break
+        else:
+            print("Invalid choice.")
+
+if __name__ == "__main__":
+    main()  
